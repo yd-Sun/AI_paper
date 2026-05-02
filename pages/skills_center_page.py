@@ -454,9 +454,9 @@ class SkillsCenterPanel:
             self.registry_payload = self.skill_manager.load_registry_cache()
         self.installed_skills = self.skill_manager.list_installed_skills(self.registry_payload)
         self.registry_skills = self.skill_manager.list_registry_skills(self.registry_payload)
+        self._ensure_selection(preferred_skill_id=preferred_skill_id)
         self._render_summary()
         self._render_skill_list()
-        self._ensure_selection(preferred_skill_id=preferred_skill_id)
         self._render_skill_detail()
 
     def _render_summary(self):
@@ -490,6 +490,7 @@ class SkillsCenterPanel:
             ).pack(fill=tk.X, pady=(0, 8))
             return
 
+        rendered_count = 0
         for title, items in sections:
             if not items:
                 continue
@@ -503,6 +504,25 @@ class SkillsCenterPanel:
             ).pack(fill=tk.X, pady=(0, 8))
             for item in items:
                 self._render_skill_list_item(item)
+                rendered_count += 1
+        self._refresh_skill_list_layout()
+
+    def _refresh_skill_list_layout(self):
+        if not self.list_view:
+            return
+
+        def apply_layout():
+            try:
+                self.list_inner.update_idletasks()
+                self.list_view._apply_layout_refresh()
+            except tk.TclError:
+                pass
+
+        apply_layout()
+        try:
+            self.frame.after_idle(apply_layout)
+        except tk.TclError:
+            pass
 
     def _render_skill_list_item(self, item):
         skill_id = item.get('id', '')

@@ -570,6 +570,234 @@ class SkillManager:
                 result.append((abs_path, rel_path))
         return sorted(result, key=lambda item: item[1])
 
+    def _find_openskills_root(self, source_dir):
+        discovered = []
+        for current_root, _dirs, files in os.walk(source_dir):
+            if 'skill.json' in files:
+                continue
+            file_names = {name.lower(): name for name in files}
+            if 'skill.md' in file_names or '.openskills.json' in file_names:
+                discovered.append(os.path.abspath(current_root))
+        if len(discovered) == 1:
+            return discovered[0]
+        return ''
+
+    @staticmethod
+    def _parse_skill_markdown_metadata(path):
+        metadata = {}
+        try:
+            with open(path, 'r', encoding='utf-8') as handle:
+                lines = handle.read(8192).splitlines()
+        except Exception:
+            return metadata
+        if not lines or lines[0].strip() != '---':
+            return metadata
+        for line in lines[1:]:
+            if line.strip() == '---':
+                break
+            if ':' not in line:
+                continue
+            key, value = line.split(':', 1)
+            metadata[key.strip()] = value.strip().strip('"').strip("'")
+        return metadata
+
+    @staticmethod
+    def _normalize_skill_id_from_text(text, default='imported-skill'):
+        value = str(text or '').strip().lower()
+        value = re.sub(r'[^a-z0-9._-]+', '-', value)
+        value = re.sub(r'[-_.]{2,}', '-', value).strip('-_.')
+        if not value or not re.match(r'^[a-z0-9]', value):
+            value = default
+        return value[:64].rstrip('-_.') or default
+
+    def _load_openskills_metadata(self, root_dir):
+        payload = self._load_json_file(os.path.join(root_dir, '.openskills.json'), default={})
+        payload = payload if isinstance(payload, dict) else {}
+        markdown_meta = self._parse_skill_markdown_metadata(os.path.join(root_dir, 'SKILL.md'))
+        name = str(payload.get('name') or markdown_meta.get('name') or os.path.basename(root_dir)).strip()
+        version = normalize_version(payload.get('version') or 'v1.0.0')
+        description = str(payload.get('description') or markdown_meta.get('description') or name).strip()
+        return {
+            'id': self._normalize_skill_id_from_text(name),
+            'name': name or 'Imported Skill',
+            'version': version,
+            'description': description,
+            'publisher': str(payload.get('author') or '').strip(),
+            'homepage': str(payload.get('homepage') or '').strip(),
+        }
+
+    def _remove_blocked_package_files(self, root_dir):
+        for abs_path, _rel_path in self._iter_package_files(root_dir):
+            lower_name = os.path.basename(abs_path).lower()
+            ext = os.path.splitext(lower_name)[1]
+            if lower_name in BLOCKED_FILE_NAMES or ext in BLOCKED_FILE_EXTENSIONS:
+                try:
+                    os.remove(abs_path)
+                except OSError:
+                    pass
+
+    def _write_openskills_adapter_files(self, root_dir, metadata):
+        scene_bindings = [
+            scene_id
+            for scene_id in (
+                'paper_write.outline',
+                'paper_write.section',
+                'paper_write.abstract',
+                'ai_reduce.transform',
+                'plagiarism.transform',
+                'polish.run_task',
+            )
+            if scene_id in SCENE_DEFS
+        ]
+        manifest = {
+            'id': metadata['id'],
+            'name': metadata['name'],
+            'version': metadata['version'],
+            'description': metadata['description'],
+            'min_app_version': 'v1.0.0',
+            'entry': {'module': 'entry', 'class': 'OpenSkillsAdapterSkill'},
+            'priority': 20,
+            'actions': [
+                {
+                    'id': 'run_with_topic',
+                    'label': '按主题执行',
+                    'description': '根据主题和补充要求调用原始 Skill 指令。',
+                    'input_schema': {
+                        'fields': [
+                            {
+                                'id': 'topic',
+                                'label': '主题',
+                                'type': 'text',
+                                'required': True,
+                                'placeholder': '输入论文主题或处理目标',
+                            },
+                            {
+                                'id': 'requirements',
+                                'label': '补充要求',
+                                'type': 'textarea',
+                                'required': False,
+                                'placeholder': '输入格式、字数、学校规范或其他限制',
+                            },
+                        ]
+                    },
+                },
+                {
+                    'id': 'rewrite_text',
+                    'label': '改写文本',
+                    'description': '按原始 Skill 指令改写输入文本。',
+                    'input_schema': {
+                        'fields': [
+                            {
+                                'id': 'text',
+                                'label': '待处理文本',
+                                'type': 'textarea',
+                                'required': True,
+                                'placeholder': '粘贴需要处理的文本',
+                            }
+                        ]
+                    },
+                },
+            ],
+            'scene_bindings': scene_bindings,
+            'global_hook': False,
+            'publisher': metadata.get('publisher', ''),
+            'homepage': metadata.get('homepage', ''),
+        }
+        self._write_json_file(os.path.join(root_dir, 'skill.json'), manifest)
+        adapter_code = r'''# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+import os
+
+
+class OpenSkillsAdapterSkill:
+    """将 SKILL.md 格式的技能适配到本应用运行时。"""
+
+    def _read_text(self, relative_path, limit=12000):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(base_dir, *str(relative_path or '').split('/'))
+        try:
+            with open(path, 'r', encoding='utf-8') as handle:
+                return handle.read()[:limit].strip()
+        except Exception:
+            return ''
+
+    def _collect_guides(self, scene_id):
+        parts = [self._read_text('SKILL.md', limit=12000)]
+        if str(scene_id or '').startswith('paper_write.'):
+            for path in (
+                'prompts/writer_guidelines.md',
+                'prompts/thesis_structure.md',
+                'prompts/reference_citation_prompt.md',
+            ):
+                text = self._read_text(path, limit=6000)
+                if text:
+                    parts.append(text)
+        elif scene_id in {'ai_reduce.transform', 'plagiarism.transform', 'polish.run_task'}:
+            for path in (
+                'prompts/aigc_reducer_prompt.md',
+                'prompts/humanizer_guidelines.md',
+                'prompts/reducer_guidelines.md',
+            ):
+                text = self._read_text(path, limit=6000)
+                if text:
+                    parts.append(text)
+        return '\n\n'.join(part for part in parts if part)
+
+    def before_request(self, ctx):
+        usage = ctx.get('usage_context', {}) or {}
+        scene_id = str(usage.get('scene_id', '') or '')
+        guides = self._collect_guides(scene_id)
+        if not guides:
+            return {}
+        return {
+            'system_append': '执行当前任务时，遵循已导入 Skill 的约束、流程和写作规范。',
+            'prompt_append': '以下是已导入 Skill 的相关说明：\n\n' + guides,
+            'metadata': {'adapter': 'openskills'},
+        }
+
+    def after_response(self, ctx, text):
+        return {}
+
+    def run_action(self, action_id, inputs, host):
+        guides = self._collect_guides('')
+        if action_id == 'run_with_topic':
+            prompt = self._join_sections(
+                '请根据已导入 Skill 的说明执行任务。',
+                self._format_block('Skill 说明', guides),
+                '主题：\n' + inputs.get('topic', ''),
+                '补充要求：\n' + inputs.get('requirements', ''),
+            )
+            return {'action_id': action_id, 'result': host.call_llm(prompt)}
+        if action_id == 'rewrite_text':
+            prompt = self._join_sections(
+                '请根据已导入 Skill 的说明处理文本。',
+                self._format_block('Skill 说明', guides),
+                '待处理文本：\n' + inputs.get('text', ''),
+            )
+            return {'action_id': action_id, 'result': host.call_llm(prompt)}
+        return {'error': f'unknown action: {action_id}'}
+
+    @staticmethod
+    def _format_block(title, content):
+        return f'【{title}】\n{content}' if content else ''
+
+    @staticmethod
+    def _join_sections(*sections):
+        return '\n\n'.join(str(section).strip() for section in sections if str(section or '').strip())
+'''
+        with open(os.path.join(root_dir, 'entry.py'), 'w', encoding='utf-8') as handle:
+            handle.write(adapter_code)
+
+    def _adapt_openskills_package(self, source_dir):
+        root_dir = self._find_openskills_root(source_dir)
+        if not root_dir:
+            return ''
+        metadata = self._load_openskills_metadata(root_dir)
+        self._remove_blocked_package_files(root_dir)
+        self._write_openskills_adapter_files(root_dir, metadata)
+        return root_dir
+
     def _resolve_source_root(self, source_dir):
         direct_manifest = os.path.join(source_dir, 'skill.json')
         if os.path.isfile(direct_manifest):
@@ -777,6 +1005,7 @@ class SkillManager:
         temp_dir = self._create_managed_temp_dir('zip_')
         try:
             self._safe_extract_zip(zip_path, temp_dir)
+            self._adapt_openskills_package(temp_dir)
             return self.install_skill_from_directory(
                 temp_dir,
                 source_type='zip',
@@ -789,6 +1018,7 @@ class SkillManager:
         temp_dir = self._create_managed_temp_dir('inspect_zip_')
         try:
             self._safe_extract_zip(zip_path, temp_dir)
+            self._adapt_openskills_package(temp_dir)
             _source_root, manifest = self.validate_skill_directory(temp_dir)
             return manifest
         finally:
