@@ -403,21 +403,39 @@ class DiscoverSkillsPanel:
         seen_ids = set()
         for item in (payload or {}).get('skills', []):
             skill_id = item.get('id', '')
-            if skill_id in installed_map:
-                view = installed_map[skill_id]
-                view_copy = dict(view)
-                view_copy['source_label'] = 'skill.sh'
-                if view_copy.get('registry_entry'):
-                    view_copy['registry_entry'] = dict(view_copy['registry_entry'], source='marketplace')
-                all_skills.append(view_copy)
-            else:
-                view = self.skill_manager.build_skill_view(
-                    {},
-                    registry_entry=item,
-                )
-                view['source_label'] = 'skill.sh'
-                all_skills.append(view)
+            if not skill_id:
+                continue
             seen_ids.add(skill_id)
+            if skill_id in installed_map:
+                view = dict(installed_map[skill_id])
+                view['source_label'] = 'skill.sh'
+                if view.get('registry_entry'):
+                    view['registry_entry'] = dict(view['registry_entry'], source='marketplace')
+                all_skills.append(view)
+            else:
+                all_skills.append({
+                    'id': skill_id,
+                    'name': item.get('name', skill_id),
+                    'version': item.get('version', ''),
+                    'latest_version': item.get('version', ''),
+                    'description': item.get('description', ''),
+                    'min_app_version': item.get('min_app_version', ''),
+                    'download_url': item.get('download_url', ''),
+                    'publisher': item.get('publisher', ''),
+                    'homepage': item.get('homepage', ''),
+                    'global_hook': bool(item.get('global_hook', False)),
+                    'scene_bindings': list(item.get('scene_bindings', [])),
+                    'registry_entry': item,
+                    'manifest': None,
+                    'is_installed': False,
+                    'has_update': False,
+                    'enabled': False,
+                    'global_enabled': False,
+                    'bound_scene_ids': [],
+                    'source_type': 'marketplace',
+                    'source_label': 'skill.sh',
+                    'actions_count': 0,
+                })
 
         self._all_skills = all_skills
 
@@ -554,8 +572,15 @@ class DiscoverSkillsPanel:
             ).pack(side=tk.RIGHT)
 
         # 元信息行
-        version_text = view.get('version', '未知')
-        source_label = view.get('source_label', view.get('source_type', 'registry') or 'registry')
+        version_val = view.get('version', '') or view.get('latest_version', '')
+        version_str = str(version_val).strip()
+        if not version_str or version_str == 'v0.0.0':
+            version_text = '未知'
+        elif not version_str.startswith('v'):
+            version_text = 'v' + version_str
+        else:
+            version_text = version_str
+        source_label = view.get('source_label', '') or view.get('source_type', '') or 'registry'
         meta_text = f'版本: {version_text}  来源: {source_label}'
         if view.get('publisher'):
             meta_text += f'  作者: {view.get("publisher")}'

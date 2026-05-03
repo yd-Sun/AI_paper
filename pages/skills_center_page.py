@@ -12,6 +12,7 @@ import tkinter as tk
 import webbrowser
 from tkinter import filedialog, messagebox, ttk
 
+from modules.prompt_center import SCENE_DEFS
 from modules.skills_runtime import SkillExecutionError, SkillValidationError
 from modules.ui_components import (
     bind_adaptive_wrap,
@@ -482,7 +483,6 @@ class SkillsCenterPanel:
 
         sections = [
             ('已安装', self.installed_skills),
-            ('发现技能', [item for item in self.registry_skills if not item.get('is_installed')]),
         ]
         if not any(items for _title, items in sections):
             tk.Label(
@@ -690,11 +690,22 @@ class SkillsCenterPanel:
             ).pack(fill=tk.X)
             return
         for scene_id in scene_bindings:
+            scene_def = SCENE_DEFS.get(scene_id, {})
+            page_label = scene_def.get('page_label', '')
+            scene_label = scene_def.get('label', '')
+            if page_label and scene_label:
+                display_name = f'{page_label} - {scene_label}'
+            elif scene_label:
+                display_name = scene_label
+            elif page_label:
+                display_name = page_label
+            else:
+                display_name = scene_id
             var = tk.BooleanVar(value=scene_id in selected_set)
             self.scene_vars[scene_id] = var
             tk.Checkbutton(
                 self.scene_checks_frame,
-                text=scene_id,
+                text=display_name,
                 variable=var,
                 font=FONTS['body'],
                 fg=COLORS['text_main'],
