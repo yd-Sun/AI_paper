@@ -4224,7 +4224,7 @@ class SmartPaperTool:
         if self._discover_skills_window and self._discover_skills_window.winfo_exists():
             self._close_discover_dialog(self._discover_skills_window)
 
-        window, body = self._create_dialog_shell('仓库管理', '800x700')
+        window, body = self._create_dialog_shell('仓库管理', '1200x800')
         window.resizable(True, True)
         apply_adaptive_window_geometry(window, '800x700', min_width=640, min_height=520)
         # 覆盖关闭协议：点 X 也走回到发现技能弹窗的逻辑

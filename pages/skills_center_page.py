@@ -94,17 +94,6 @@ class SkillsCenterPanel:
             bg=COLORS['bg_main'],
         ).pack(side=tk.LEFT)
 
-        if callable(self.close_panel):
-            close_shell, _close_button = create_home_shell_button(
-                title_row,
-                '关闭',
-                command=self.close_panel,
-                style='secondary',
-                padx=14,
-                pady=6,
-            )
-            close_shell.pack(side=tk.RIGHT)
-
         self.summary_label = tk.Label(
             header,
             text='',

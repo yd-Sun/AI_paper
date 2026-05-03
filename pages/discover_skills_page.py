@@ -281,13 +281,10 @@ class DiscoverSkillsPanel:
             self.set_status('没有已启用的仓库', COLORS['warning'])
             return
 
-        # 先加载本地缓存
+        # 先加载本地缓存（用于远程拉取失败时的回退）
         self._registry_payload = self.skill_manager.load_registry_cache()
-        self._merge_registry_to_skills()
-        self._apply_filters()
-        self.set_status('使用缓存的仓库索引', COLORS['text_sub'])
 
-        # 然后尝试从各仓库刷新
+        # 直接远程拉取，避免缓存渲染后再刷新导致的闪烁
         self._fetch_all_repos(enabled_repos)
 
     def _merge_registry_to_skills(self):
@@ -347,31 +344,47 @@ class DiscoverSkillsPanel:
 
         all_skills = []
         seen_ids = set()
-        for item in self.skill_manager.list_registry_skills(self._registry_payload):
-            skill_id = item.get('id', '')
-            if skill_id in installed_map:
-                merged = installed_map[skill_id]
-            else:
-                merged = item
-            if skill_id not in seen_ids:
+
+        # 如果远程拉取有数据，使用远程数据
+        if raw_skills:
+            for item in self.skill_manager.list_registry_skills(self._registry_payload):
+                skill_id = item.get('id', '')
+                if skill_id in installed_map:
+                    merged = installed_map[skill_id]
+                else:
+                    merged = item
+                if skill_id not in seen_ids:
+                    seen_ids.add(skill_id)
+                    all_skills.append(merged)
+            for raw in raw_skills:
+                skill_id = str(raw.get('id', '') or '').strip()
+                if skill_id and skill_id not in seen_ids:
+                    seen_ids.add(skill_id)
+                    view = self.skill_manager.build_skill_view(
+                        installed_map.get(skill_id, {}),
+                        registry_entry=raw,
+                    )
+                    all_skills.append(view)
+        else:
+            # 远程拉取全部失败，回退到本地缓存
+            for item in self.skill_manager.list_registry_skills(self._registry_payload):
+                skill_id = item.get('id', '')
+                if skill_id in installed_map:
+                    all_skills.append(installed_map[skill_id])
+                else:
+                    all_skills.append(item)
                 seen_ids.add(skill_id)
-                all_skills.append(merged)
-        for raw in raw_skills:
-            skill_id = str(raw.get('id', '') or '').strip()
-            if skill_id and skill_id not in seen_ids:
-                seen_ids.add(skill_id)
-                view = self.skill_manager.build_skill_view(
-                    installed_map.get(skill_id, {}),
-                    registry_entry=raw,
-                )
-                all_skills.append(view)
+
         for item in installed:
             if item.get('id') not in seen_ids:
                 all_skills.append(item)
 
         self._all_skills = all_skills
         self._apply_filters()
-        self.set_status(f'技能索引已刷新，共 {len(self._all_skills)} 个技能', COLORS['success'])
+        if raw_skills:
+            self.set_status(f'技能索引已刷新，共 {len(self._all_skills)} 个技能', COLORS['success'])
+        else:
+            self.set_status(f'使用缓存索引，共 {len(self._all_skills)} 个技能', COLORS['text_sub'])
 
     def _load_marketplace_data(self):
         self.set_status('正在加载 skill.sh 技能市场...', COLORS['warning'])
