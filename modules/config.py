@@ -130,6 +130,16 @@ class ConfigManager:
             },
             'skills_center': {
                 'installed': {},
+                'repositories': [
+                    {
+                        'id': 'official',
+                        'name': '官方仓库',
+                        'url': 'https://raw.githubusercontent.com/Abnerla/AI_paper/main/Management/skills_index.json',
+                        'type': 'github_raw',
+                        'added_at': 0,
+                        'enabled': True,
+                    }
+                ],
             },
             'workspace_state': {},
             'settings': {
@@ -478,8 +488,38 @@ class ConfigManager:
                 sanitized = self._sanitize_skills_center_record(skill_id, record)
                 if sanitized:
                     installed[sanitized['id']] = sanitized
+
+        repositories = []
+        seen_repo_ids = set()
+        for repo in list(skills_center.get('repositories', []) or []):
+            if not isinstance(repo, dict):
+                continue
+            repo_id = str(repo.get('id', '') or '').strip()
+            if not repo_id or repo_id in seen_repo_ids:
+                continue
+            seen_repo_ids.add(repo_id)
+            repositories.append({
+                'id': repo_id,
+                'name': str(repo.get('name', '') or '').strip() or repo_id,
+                'url': str(repo.get('url', '') or '').strip(),
+                'type': str(repo.get('type', 'github_raw') or 'github_raw').strip(),
+                'added_at': max(int(repo.get('added_at', 0) or 0), 0),
+                'enabled': bool(repo.get('enabled', True)),
+            })
+        official_exists = any(r.get('id') == 'official' for r in repositories)
+        if not official_exists:
+            repositories.insert(0, {
+                'id': 'official',
+                'name': '官方仓库',
+                'url': 'https://raw.githubusercontent.com/Abnerla/AI_paper/main/Management/skills_index.json',
+                'type': 'github_raw',
+                'added_at': 0,
+                'enabled': True,
+            })
+
         return {
             'installed': installed,
+            'repositories': repositories,
         }
 
     def _sanitize_loaded_data(self, data):
@@ -1047,4 +1087,57 @@ class ConfigManager:
     def delete_skills_center_record(self, skill_id):
         skills_center = self._sanitize_skills_center(self._data.get('skills_center', {}))
         skills_center.setdefault('installed', {}).pop(str(skill_id or '').strip(), None)
+        self._data['skills_center'] = skills_center
+
+    def get_skills_repositories(self):
+        skills_center = self._sanitize_skills_center(self._data.get('skills_center', {}))
+        self._data['skills_center'] = skills_center
+        return copy.deepcopy(skills_center.get('repositories', []))
+
+    def add_skills_repository(self, repo_dict):
+        if not isinstance(repo_dict, dict):
+            return
+        skills_center = self._sanitize_skills_center(self._data.get('skills_center', {}))
+        repo_id = str(repo_dict.get('id', '') or '').strip()
+        if not repo_id:
+            import time as _time
+            import random as _random
+            repo_id = f'repo_{int(_time.time())}_{_random.randint(1000, 9999)}'
+        repo_dict['id'] = repo_id
+        sanitized = {
+            'id': repo_id,
+            'name': str(repo_dict.get('name', '') or '').strip() or repo_id,
+            'url': str(repo_dict.get('url', '') or '').strip(),
+            'type': str(repo_dict.get('type', 'github_raw') or 'github_raw').strip(),
+            'added_at': max(int(repo_dict.get('added_at', 0) or 0), 0),
+            'enabled': bool(repo_dict.get('enabled', True)),
+        }
+        repositories = list(skills_center.get('repositories', []))
+        existing_ids = {r.get('id') for r in repositories}
+        if repo_id in existing_ids:
+            repositories = [sanitized if r.get('id') == repo_id else r for r in repositories]
+        else:
+            repositories.append(sanitized)
+        skills_center['repositories'] = repositories
+        self._data['skills_center'] = skills_center
+
+    def remove_skills_repository(self, repo_id):
+        skills_center = self._sanitize_skills_center(self._data.get('skills_center', {}))
+        repo_id = str(repo_id or '').strip()
+        repositories = [r for r in skills_center.get('repositories', []) if r.get('id') != repo_id]
+        skills_center['repositories'] = repositories
+        self._data['skills_center'] = skills_center
+
+    def update_skills_repository(self, repo_id, updates):
+        skills_center = self._sanitize_skills_center(self._data.get('skills_center', {}))
+        repo_id = str(repo_id or '').strip()
+        repositories = list(skills_center.get('repositories', []))
+        for i, r in enumerate(repositories):
+            if r.get('id') == repo_id:
+                if isinstance(updates, dict):
+                    r.update(updates)
+                    r['id'] = repo_id
+                repositories[i] = r
+                break
+        skills_center['repositories'] = repositories
         self._data['skills_center'] = skills_center

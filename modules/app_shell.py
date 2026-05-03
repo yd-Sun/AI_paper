@@ -413,6 +413,8 @@ class SmartPaperTool:
         self._prompt_compact_panel = None
         self._skills_center_window = None
         self._skills_center_panel = None
+        self._discover_skills_window = None
+        self._discover_skills_panel = None
         self._remote_content = None
         self.skill_manager = None
         self._version_check_anim_job = None
@@ -2938,6 +2940,7 @@ class SmartPaperTool:
             show_api_config=self._show_api_config_dialog,
             show_prompt_manager=self._show_prompt_manager,
             show_skills_center=self._show_skills_center,
+            show_discover_skills=self._show_discover_skills,
             show_model_routing=self._show_model_routing,
             switch_api_provider_direct=self._switch_api_provider_in_dialog,
             add_new_provider=self._add_new_provider_in_dialog,
@@ -3269,6 +3272,9 @@ class SmartPaperTool:
         if window is self._skills_center_window:
             self._skills_center_window = None
             self._skills_center_panel = None
+        if window is self._discover_skills_window:
+            self._discover_skills_window = None
+            self._discover_skills_panel = None
         window.destroy()
 
     def _get_active_model_label(self):
@@ -4146,10 +4152,64 @@ class SmartPaperTool:
             self._remote_content,
             set_status=self._set_status,
             close_panel=lambda win=window: self._close_dialog(win),
+            app_bridge=self.app_bridge,
         )
         panel.frame.pack(fill=tk.BOTH, expand=True, padx=28, pady=28)
         self._skills_center_panel = panel
         return panel
+
+    def _show_discover_skills(self):
+        from pages.discover_skills_page import DiscoverSkillsPanel
+        from modules.skill_marketplace import SkillMarketplaceClient
+
+        existing_window = self._discover_skills_window
+        existing_panel = self._discover_skills_panel
+        if existing_window and existing_window.winfo_exists() and existing_panel:
+            existing_window.lift()
+            existing_window.focus_force()
+            existing_panel._refresh()
+            return existing_panel
+
+        window, body = self._create_dialog_shell('发现技能', '1200x800')
+        window.resizable(True, True)
+        apply_adaptive_window_geometry(window, '1200x800', min_width=900, min_height=640)
+        self._discover_skills_window = window
+
+        # 创建或复用 marketplace 客户端
+        if not hasattr(self, '_marketplace_client') or self._marketplace_client is None:
+            skills_root = self.skill_manager.resolve_skills_root() if self.skill_manager else os.path.join(self.config_mgr.app_dir, 'skills')
+            self._marketplace_client = SkillMarketplaceClient(
+                skills_root,
+                self.root,
+                log_callback=self._write_app_log if hasattr(self, '_write_app_log') else None,
+            )
+
+        # 安装后回调，同步 Skills 管理面板
+        def on_installed():
+            if self._skills_center_panel and hasattr(self._skills_center_panel, 'refresh_all'):
+                try:
+                    self._skills_center_panel.refresh_all(force_registry=False)
+                except Exception:
+                    pass
+
+        panel = DiscoverSkillsPanel(
+            body,
+            self.config_mgr,
+            self.skill_manager,
+            self._remote_content,
+            self._marketplace_client,
+            set_status=self._set_status,
+            close_panel=lambda win=window: self._close_discover_dialog(win),
+            on_skill_installed=on_installed,
+        )
+        panel.frame.pack(fill=tk.BOTH, expand=True, padx=28, pady=28)
+        self._discover_skills_panel = panel
+        return panel
+
+    def _close_discover_dialog(self, window):
+        self._discover_skills_window = None
+        self._discover_skills_panel = None
+        self._close_dialog(window)
 
     def _collect_runtime_backup_zip_bytes(self):
         app_dir = os.path.abspath(self.config_mgr.app_dir)

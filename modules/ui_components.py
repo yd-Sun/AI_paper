@@ -1285,6 +1285,64 @@ def bind_combobox_dropdown_mousewheel(combo):
     _schedule_binding()
 
 
+class SkillCardGrid(tk.Frame):
+    """响应式网格布局容器，用于展示固定宽度的技能卡片。"""
+
+    def __init__(self, parent, card_width=280, gap_x=14, gap_y=14, **kwargs):
+        kwargs.setdefault('bg', parent.cget('bg') if 'bg' in parent.keys() else COLORS['bg_main'])
+        kwargs.setdefault('bd', 0)
+        kwargs.setdefault('highlightthickness', 0)
+        super().__init__(parent, **kwargs)
+        self._card_width = card_width
+        self._gap_x = gap_x
+        self._gap_y = gap_y
+        self._cards = []
+        self._last_layout_signature = None
+        self.bind('<Configure>', self._schedule_relayout, add='+')
+
+    def add_card(self, widget):
+        self._cards.append(widget)
+        self.after_idle(self._schedule_relayout)
+
+    def clear_cards(self):
+        for card in self._cards:
+            card.grid_forget()
+            card.destroy()
+        self._cards.clear()
+        self._last_layout_signature = None
+
+    def _schedule_relayout(self, _event=None, delay_ms=16):
+        _schedule_resize_batch(
+            self,
+            ('skill_card_grid', str(self)),
+            self._relayout,
+            delay_ms=delay_ms,
+        )
+
+    def _relayout(self):
+        if not self._cards:
+            return
+        width = max(self.winfo_width(), 1)
+        cols = max(1, width // (self._card_width + self._gap_x))
+        signature = (width, cols, len(self._cards))
+        if signature == self._last_layout_signature:
+            return
+        self._last_layout_signature = signature
+
+        for card in self._cards:
+            card.grid_forget()
+
+        for col in range(cols):
+            self.grid_columnconfigure(col, weight=1, uniform='skill_col')
+
+        for index, card in enumerate(self._cards):
+            row = index // cols
+            col = index % cols
+            padx = (0, self._gap_x) if col < cols - 1 else (0, 0)
+            pady = (0, self._gap_y)
+            card.grid(row=row, column=col, padx=padx, pady=pady, sticky='new')
+
+
 class ResponsiveButtonBar(tk.Frame):
     """根据可用宽度自动换行的按钮容器。"""
 

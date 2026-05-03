@@ -40,12 +40,13 @@ def _format_timestamp(ts):
 
 
 class SkillsCenterPanel:
-    def __init__(self, parent, config_mgr, skill_manager, remote_content_manager, *, set_status, close_panel=None):
+    def __init__(self, parent, config_mgr, skill_manager, remote_content_manager, *, set_status, close_panel=None, app_bridge=None):
         self.config = config_mgr
         self.skill_manager = skill_manager
         self.remote_content = remote_content_manager
         self.set_status = set_status
         self.close_panel = close_panel
+        self.app_bridge = app_bridge
         self.frame = tk.Frame(parent, bg=COLORS['bg_main'])
 
         self.registry_payload = self.skill_manager.load_registry_cache()
@@ -414,6 +415,10 @@ class SkillsCenterPanel:
         )
 
     def _discover_skills(self):
+        if self.app_bridge and hasattr(self.app_bridge, 'show_discover_skills'):
+            self.app_bridge.show_discover_skills()
+            return
+        # 回退：保留原有行为
         self.set_status('正在拉取官方技能索引...', COLORS['warning'])
 
         def on_loaded(data):

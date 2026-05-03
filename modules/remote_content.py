@@ -124,6 +124,25 @@ class RemoteContentManager:
         with self._lock:
             return self._cache.get(content_key)
 
+    def fetch_custom(self, url, on_success, on_error=None, force=False):
+        """拉取自定义 URL 的 JSON 内容，通过回调返回结果到 UI 线程。
+
+        url: 完整的 JSON 索引 URL
+        on_success(data: dict): 成功回调
+        on_error(exc: Exception): 失败回调（可选）
+        force: 是否忽略缓存强制拉取
+        """
+        cache_key = f'custom_{url}'
+        if not force:
+            with self._lock:
+                cached = self._cache.get(cache_key)
+                ts = self._cache_ts.get(cache_key, 0)
+            if cached and (time.time() - ts) < CACHE_TTL:
+                self._scheduler.after(0, lambda d=cached: on_success(d))
+                return
+        t = threading.Thread(target=self._worker, args=(cache_key, url, on_success, on_error), daemon=True)
+        t.start()
+
     def has_new_announcement(self, last_seen_id):
         """判断缓存的公告 id 是否与 last_seen_id 不同"""
         with self._lock:

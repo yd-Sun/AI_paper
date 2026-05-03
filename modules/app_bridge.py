@@ -42,6 +42,9 @@ class AppBridge:
     def show_skills_center(self):
         return self._call('show_skills_center')
 
+    def show_discover_skills(self):
+        return self._call('show_discover_skills')
+
     def show_model_routing(self):
         return self._call('show_model_routing')
 
