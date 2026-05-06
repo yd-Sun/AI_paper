@@ -669,7 +669,7 @@ class PolishPage(WorkspaceStateMixin):
         if not text:
             messagebox.showwarning('提示', '请先输入待处理文本', parent=self.frame)
             return
-        if not self._ensure_prompt_ready():
+        if not self._ensure_prompt_ready('polish.run_task'):
             return
 
         config = self._collect_task_config()
@@ -725,13 +725,13 @@ class PolishPage(WorkspaceStateMixin):
             return
         self.app_bridge.show_prompt_manager(page_id='polish', compact=True, scene_id='polish.run_task')
 
-    def _ensure_prompt_ready(self):
+    def _ensure_prompt_ready(self, scene_id='polish.run_task'):
         if not ensure_model_configured(self.config, self.frame, self.app_bridge):
             return False
-        if self.prompt_center.scene_has_active_prompt('polish.run_task'):
+        if self.prompt_center.scene_has_active_prompt(scene_id):
             return True
         messagebox.showwarning('提示', '当前页面没有可用的提示词，请先创建或选择一条提示词。', parent=self.frame)
-        self._open_prompt_manager()
+        self.app_bridge.show_prompt_manager(page_id='polish', compact=True, scene_id=scene_id)
         return False
 
     def _update_paper_font_styles(self, styles):
@@ -861,6 +861,8 @@ class PolishPage(WorkspaceStateMixin):
         text = self._get_input_text()
         if not text:
             messagebox.showwarning('提示', '请先输入文本', parent=self.frame)
+            return
+        if not self._ensure_prompt_ready('polish.translate'):
             return
 
         win = tk.Toplevel(self.frame)

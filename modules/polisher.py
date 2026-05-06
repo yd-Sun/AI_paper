@@ -69,94 +69,42 @@ class AcademicPolisher:
 
     def polish_grammar(self, text: str) -> str:
         """语法和标点修正。"""
-        system = '你是一位专业的中文学术文本校对专家。'
-        prompt = f'''请对以下文本进行语法和标点校对：
-
-{text}
-
-校对要求：
-1. 修正语法错误。
-2. 规范中文标点使用。
-3. 修正错别字。
-4. 修正不完整句子。
-5. 统一数字格式。
-6. 不改变原文含义和风格。
-
-请直接输出校对后的文本，并在末尾用【修改说明】列出主要改动。'''
+        rendered = self.prompt_center.render_scene('polish.grammar', {'text': text})
         return self.api.call_sync(
-            prompt,
-            system,
+            rendered['prompt'],
+            rendered['system'],
             temperature=0.3,
-            usage_context=self._usage_context('polish_grammar'),
+            usage_context=self._usage_context('polish_grammar', scene_id='polish.grammar'),
         )
 
     def polish_academic_vocab(self, text: str) -> str:
         """学术词汇替换。"""
-        system = '你是一位学术写作专家，精通学术词汇和表达。'
-        prompt = f'''请对以下文本进行学术词汇优化：
-{text}
-
-优化要求：
-1. 将口语化表达替换为学术规范表达。
-2. 使用更精确的专业术语。
-3. 避免模糊、笼统的表述。
-4. 增强客观性。
-5. 规范量词和单位使用。
-6. 保持原有论证逻辑。
-
-请直接输出优化后的文本。'''
+        rendered = self.prompt_center.render_scene('polish.academic_vocab', {'text': text})
         return self.api.call_sync(
-            prompt,
-            system,
+            rendered['prompt'],
+            rendered['system'],
             temperature=0.4,
-            usage_context=self._usage_context('polish_academic_vocab'),
+            usage_context=self._usage_context('polish_academic_vocab', scene_id='polish.academic_vocab'),
         )
 
     def polish_logic(self, text: str) -> str:
         """逻辑和段落优化。"""
-        system = '你是一位擅长学术写作的逻辑思维专家。'
-        prompt = f'''请对以下文本进行逻辑和结构优化：
-
-{text}
-
-优化要求：
-1. 理顺论证逻辑，确保因果关系清晰。
-2. 优化段落间的过渡和衔接。
-3. 调整句子顺序，使论证更有力。
-4. 增加必要的承上启下过渡句。
-5. 确保每段只有一个中心论点。
-6. 加强结论与论据的对应关系。
-
-请直接输出优化后的文本。'''
+        rendered = self.prompt_center.render_scene('polish.logic', {'text': text})
         return self.api.call_sync(
-            prompt,
-            system,
+            rendered['prompt'],
+            rendered['system'],
             temperature=0.5,
-            usage_context=self._usage_context('polish_logic'),
+            usage_context=self._usage_context('polish_logic', scene_id='polish.logic'),
         )
 
     def polish_full(self, text: str) -> str:
         """全面润色。"""
-        system = '你是一位顶级学术论文编辑，能够全面提升论文质量。'
-        prompt = f'''请对以下论文内容进行全面学术润色：
-{text}
-
-润色要求：
-1. 语法和标点规范化。
-2. 学术词汇精确化。
-3. 句式多样化。
-4. 逻辑连贯性增强。
-5. 段落结构优化。
-6. 表达更加简洁有力。
-7. 保留所有数据、公式、引用信息。
-8. 整体风格保持学术严谨。
-
-请直接输出润色后的文本。'''
+        rendered = self.prompt_center.render_scene('polish.full', {'text': text})
         return self.api.call_sync(
-            prompt,
-            system,
+            rendered['prompt'],
+            rendered['system'],
             temperature=0.5,
-            usage_context=self._usage_context('polish_full'),
+            usage_context=self._usage_context('polish_full', scene_id='polish.full'),
         )
 
     def translate_polish(self, text: str, target_lang: str = '英文') -> str:

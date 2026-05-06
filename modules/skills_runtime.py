@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import threading
 import time
 import urllib.parse
@@ -577,10 +578,11 @@ class SkillManager:
                 continue
             file_names = {name.lower(): name for name in files}
             if 'skill.md' in file_names or '.openskills.json' in file_names:
-                discovered.append(os.path.abspath(current_root))
+                actual_md_name = file_names.get('skill.md', '')
+                discovered.append((os.path.abspath(current_root), actual_md_name))
         if len(discovered) == 1:
             return discovered[0]
-        return ''
+        return ()
 
     @staticmethod
     def _parse_skill_markdown_metadata(path):
@@ -610,10 +612,12 @@ class SkillManager:
             value = default
         return value[:64].rstrip('-_.') or default
 
-    def _load_openskills_metadata(self, root_dir):
+    def _load_openskills_metadata(self, root_dir, md_filename=''):
         payload = self._load_json_file(os.path.join(root_dir, '.openskills.json'), default={})
         payload = payload if isinstance(payload, dict) else {}
-        markdown_meta = self._parse_skill_markdown_metadata(os.path.join(root_dir, 'SKILL.md'))
+        markdown_meta = {}
+        if md_filename:
+            markdown_meta = self._parse_skill_markdown_metadata(os.path.join(root_dir, md_filename))
         name = str(payload.get('name') or markdown_meta.get('name') or os.path.basename(root_dir)).strip()
         version = normalize_version(payload.get('version') or 'v1.0.0')
         description = str(payload.get('description') or markdown_meta.get('description') or name).strip()
@@ -636,7 +640,7 @@ class SkillManager:
                 except OSError:
                     pass
 
-    def _write_openskills_adapter_files(self, root_dir, metadata):
+    def _write_openskills_adapter_files(self, root_dir, metadata, md_filename='SKILL.md'):
         scene_bindings = [
             scene_id
             for scene_id in (
@@ -704,98 +708,103 @@ class SkillManager:
             'homepage': metadata.get('homepage', ''),
         }
         self._write_json_file(os.path.join(root_dir, 'skill.json'), manifest)
-        adapter_code = r'''# -*- coding: utf-8 -*-
-from __future__ import annotations
-
-import os
-
-
-class OpenSkillsAdapterSkill:
-    """将 SKILL.md 格式的技能适配到本应用运行时。"""
-
-    def _read_text(self, relative_path, limit=12000):
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(base_dir, *str(relative_path or '').split('/'))
-        try:
-            with open(path, 'r', encoding='utf-8') as handle:
-                return handle.read()[:limit].strip()
-        except Exception:
-            return ''
-
-    def _collect_guides(self, scene_id):
-        parts = [self._read_text('SKILL.md', limit=12000)]
-        if str(scene_id or '').startswith('paper_write.'):
-            for path in (
-                'prompts/writer_guidelines.md',
-                'prompts/thesis_structure.md',
-                'prompts/reference_citation_prompt.md',
-            ):
-                text = self._read_text(path, limit=6000)
-                if text:
-                    parts.append(text)
-        elif scene_id in {'ai_reduce.transform', 'plagiarism.transform', 'polish.run_task'}:
-            for path in (
-                'prompts/aigc_reducer_prompt.md',
-                'prompts/humanizer_guidelines.md',
-                'prompts/reducer_guidelines.md',
-            ):
-                text = self._read_text(path, limit=6000)
-                if text:
-                    parts.append(text)
-        return '\n\n'.join(part for part in parts if part)
-
-    def before_request(self, ctx):
-        usage = ctx.get('usage_context', {}) or {}
-        scene_id = str(usage.get('scene_id', '') or '')
-        guides = self._collect_guides(scene_id)
-        if not guides:
-            return {}
-        return {
-            'system_append': '执行当前任务时，遵循已导入 Skill 的约束、流程和写作规范。',
-            'prompt_append': '以下是已导入 Skill 的相关说明：\n\n' + guides,
-            'metadata': {'adapter': 'openskills'},
-        }
-
-    def after_response(self, ctx, text):
-        return {}
-
-    def run_action(self, action_id, inputs, host):
-        guides = self._collect_guides('')
-        if action_id == 'run_with_topic':
-            prompt = self._join_sections(
-                '请根据已导入 Skill 的说明执行任务。',
-                self._format_block('Skill 说明', guides),
-                '主题：\n' + inputs.get('topic', ''),
-                '补充要求：\n' + inputs.get('requirements', ''),
-            )
-            return {'action_id': action_id, 'result': host.call_llm(prompt)}
-        if action_id == 'rewrite_text':
-            prompt = self._join_sections(
-                '请根据已导入 Skill 的说明处理文本。',
-                self._format_block('Skill 说明', guides),
-                '待处理文本：\n' + inputs.get('text', ''),
-            )
-            return {'action_id': action_id, 'result': host.call_llm(prompt)}
-        return {'error': f'unknown action: {action_id}'}
-
-    @staticmethod
-    def _format_block(title, content):
-        return f'【{title}】\n{content}' if content else ''
-
-    @staticmethod
-    def _join_sections(*sections):
-        return '\n\n'.join(str(section).strip() for section in sections if str(section or '').strip())
-'''
+        safe_md_name = md_filename.replace("'", "\\'")
+        adapter_code = (
+            '# -*- coding: utf-8 -*-\n'
+            'from __future__ import annotations\n'
+            '\n'
+            'import os\n'
+            '\n'
+            '\n'
+            'class OpenSkillsAdapterSkill:\n'
+            '    """将 OpenSkills 格式的技能适配到本应用运行时。"""\n'
+            '\n'
+            '    _MD_FILENAME = ' + repr(md_filename) + '\n'
+            '\n'
+            '    def _read_text(self, relative_path, limit=12000):\n'
+            '        base_dir = os.path.dirname(os.path.abspath(__file__))\n'
+            '        path = os.path.join(base_dir, *str(relative_path or \'\').split(\'/\'))\n'
+            '        try:\n'
+            '            with open(path, \'r\', encoding=\'utf-8\') as handle:\n'
+            '                return handle.read()[:limit].strip()\n'
+            '        except Exception:\n'
+            '            return \'\'\n'
+            '\n'
+            '    def _collect_guides(self, scene_id):\n'
+            '        parts = [self._read_text(self._MD_FILENAME, limit=12000)]\n'
+            '        if str(scene_id or \'\').startswith(\'paper_write.\'):\n'
+            '            for path in (\n'
+            '                \'prompts/writer_guidelines.md\',\n'
+            '                \'prompts/thesis_structure.md\',\n'
+            '                \'prompts/reference_citation_prompt.md\',\n'
+            '            ):\n'
+            '                text = self._read_text(path, limit=6000)\n'
+            '                if text:\n'
+            '                    parts.append(text)\n'
+            '        elif scene_id in {\'ai_reduce.transform\', \'plagiarism.transform\', \'polish.run_task\'}:\n'
+            '            for path in (\n'
+            '                \'prompts/aigc_reducer_prompt.md\',\n'
+            '                \'prompts/humanizer_guidelines.md\',\n'
+            '                \'prompts/reducer_guidelines.md\',\n'
+            '            ):\n'
+            '                text = self._read_text(path, limit=6000)\n'
+            '                if text:\n'
+            '                    parts.append(text)\n'
+            '        return \'\\n\\n\'.join(part for part in parts if part)\n'
+            '\n'
+            '    def before_request(self, ctx):\n'
+            '        usage = ctx.get(\'usage_context\', {}) or {}\n'
+            '        scene_id = str(usage.get(\'scene_id\', \'\') or \'\')\n'
+            '        guides = self._collect_guides(scene_id)\n'
+            '        if not guides:\n'
+            '            return {}\n'
+            '        return {\n'
+            '            \'system_append\': \'执行当前任务时，遵循已导入 Skill 的约束、流程和写作规范。\',\n'
+            '            \'prompt_append\': \'以下是已导入 Skill 的相关说明：\\n\\n\' + guides,\n'
+            '            \'metadata\': {\'adapter\': \'openskills\'},\n'
+            '        }\n'
+            '\n'
+            '    def after_response(self, ctx, text):\n'
+            '        return {}\n'
+            '\n'
+            '    def run_action(self, action_id, inputs, host):\n'
+            '        guides = self._collect_guides(\'\')\n'
+            '        if action_id == \'run_with_topic\':\n'
+            '            prompt = self._join_sections(\n'
+            '                \'请根据已导入 Skill 的说明执行任务。\',\n'
+            '                self._format_block(\'Skill 说明\', guides),\n'
+            '                \'主题：\\n\' + inputs.get(\'topic\', \'\'),\n'
+            '                \'补充要求：\\n\' + inputs.get(\'requirements\', \'\'),\n'
+            '            )\n'
+            '            return {\'action_id\': action_id, \'result\': host.call_llm(prompt)}\n'
+            '        if action_id == \'rewrite_text\':\n'
+            '            prompt = self._join_sections(\n'
+            '                \'请根据已导入 Skill 的说明处理文本。\',\n'
+            '                self._format_block(\'Skill 说明\', guides),\n'
+            '                \'待处理文本：\\n\' + inputs.get(\'text\', \'\'),\n'
+            '            )\n'
+            '            return {\'action_id\': action_id, \'result\': host.call_llm(prompt)}\n'
+            '        return {\'error\': f\'unknown action: {action_id}\'}\n'
+            '\n'
+            '    @staticmethod\n'
+            '    def _format_block(title, content):\n'
+            '        return f\'【{title}】\\n{content}\' if content else \'\'\n'
+            '\n'
+            '    @staticmethod\n'
+            '    def _join_sections(*sections):\n'
+            '        return \'\\n\\n\'.join(str(section).strip() for section in sections if str(section or \'\').strip())\n'
+        )
         with open(os.path.join(root_dir, 'entry.py'), 'w', encoding='utf-8') as handle:
             handle.write(adapter_code)
 
     def _adapt_openskills_package(self, source_dir):
-        root_dir = self._find_openskills_root(source_dir)
-        if not root_dir:
+        result = self._find_openskills_root(source_dir)
+        if not result:
             return ''
-        metadata = self._load_openskills_metadata(root_dir)
+        root_dir, md_filename = result
+        metadata = self._load_openskills_metadata(root_dir, md_filename=md_filename)
         self._remove_blocked_package_files(root_dir)
-        self._write_openskills_adapter_files(root_dir, metadata)
+        self._write_openskills_adapter_files(root_dir, metadata, md_filename=md_filename or 'SKILL.md')
         return root_dir
 
     def _resolve_source_root(self, source_dir):
@@ -859,10 +868,12 @@ class OpenSkillsAdapterSkill:
     def _build_module_spec(self, skill_id, entry_file, module_name):
         module_key = f'paperlab_skill_{str(skill_id).replace(".", "_").replace("-", "_")}_{module_name.replace(".", "_")}'
         if os.path.basename(entry_file) == '__init__.py':
+            package_dir = os.path.dirname(entry_file)
+            parent_key = module_key
             return importlib.util.spec_from_file_location(
-                module_key,
+                parent_key,
                 entry_file,
-                submodule_search_locations=[os.path.dirname(entry_file)],
+                submodule_search_locations=[package_dir],
             )
         return importlib.util.spec_from_file_location(module_key, entry_file)
 
@@ -874,9 +885,25 @@ class OpenSkillsAdapterSkill:
         if spec is None or spec.loader is None:
             raise SkillValidationError(f'入口模块无法加载：{entry_module}')
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+
+        is_package = os.path.basename(entry_file) == '__init__.py'
+        if is_package:
+            package_dir = os.path.dirname(entry_file)
+            module.__package__ = spec.name
+            module.__path__ = [package_dir]
+        else:
+            module.__package__ = None
+
+        sys.modules[spec.name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(spec.name, None)
+            raise
+
         skill_class = getattr(module, entry_class_name, None)
         if skill_class is None:
+            sys.modules.pop(spec.name, None)
             raise SkillValidationError(f'入口类不存在：{entry_class_name}')
         return skill_class
 

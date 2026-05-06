@@ -96,6 +96,42 @@ SCENE_DEFS = {
         ),
         'required_variables': ('text', 'target_lang'),
     },
+    'polish.grammar': {
+        'page_id': 'polish',
+        'page_label': '学术润色',
+        'label': '语法标点修正',
+        'variables': (
+            ('text', '待校对文本'),
+        ),
+        'required_variables': ('text',),
+    },
+    'polish.academic_vocab': {
+        'page_id': 'polish',
+        'page_label': '学术润色',
+        'label': '学术词汇优化',
+        'variables': (
+            ('text', '待优化文本'),
+        ),
+        'required_variables': ('text',),
+    },
+    'polish.logic': {
+        'page_id': 'polish',
+        'page_label': '学术润色',
+        'label': '逻辑段落优化',
+        'variables': (
+            ('text', '待优化文本'),
+        ),
+        'required_variables': ('text',),
+    },
+    'polish.full': {
+        'page_id': 'polish',
+        'page_label': '学术润色',
+        'label': '全面润色',
+        'variables': (
+            ('text', '待润色文本'),
+        ),
+        'required_variables': ('text',),
+    },
     'ai_reduce.transform': {
         'page_id': 'ai_reduce',
         'page_label': '降AI检测',
@@ -194,6 +230,37 @@ LEGACY_INSTRUCTION_WRAPPERS = {
         '附加提示词：\n{instruction}\n\n'
         '补充说明：\n{notes}\n\n'
         '请直接输出最终处理后的文本。'
+    ),
+    'polish.translate': (
+        '请将以下学术文本翻译为指定语言：\n\n'
+        '{text}\n\n'
+        '目标语言：{target_lang}\n\n'
+        '附加提示词：\n{instruction}\n\n'
+        '请直接输出翻译后的正文。'
+    ),
+    'polish.grammar': (
+        '请对以下文本进行语法和标点校对：\n\n'
+        '{text}\n\n'
+        '附加提示词：\n{instruction}\n\n'
+        '请直接输出校对后的文本，并在末尾用【修改说明】列出主要改动。'
+    ),
+    'polish.academic_vocab': (
+        '请对以下文本进行学术词汇优化：\n\n'
+        '{text}\n\n'
+        '附加提示词：\n{instruction}\n\n'
+        '请直接输出优化后的文本。'
+    ),
+    'polish.logic': (
+        '请对以下文本进行逻辑和结构优化：\n\n'
+        '{text}\n\n'
+        '附加提示词：\n{instruction}\n\n'
+        '请直接输出优化后的文本。'
+    ),
+    'polish.full': (
+        '请对以下论文内容进行全面学术润色：\n\n'
+        '{text}\n\n'
+        '附加提示词：\n{instruction}\n\n'
+        '请直接输出润色后的文本。'
     ),
     'correction.ai_review': (
         '请对下面的论文文本做智能纠错，只返回 JSON 数组，不要输出 Markdown。\n\n'

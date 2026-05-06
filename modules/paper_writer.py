@@ -77,17 +77,16 @@ class PaperWriter:
 
     def format_references(self, refs_text, style='GB/T 7714'):
         """格式化参考文献。"""
-        system = '你是一位专业的学术规范助手，精通各类参考文献格式。'
-        prompt = f'''请将以下参考文献整理为{style}格式：
-{refs_text}
-
-要求：
-1. 严格按照{style}标准格式。
-2. 按照引用顺序编号。
-3. 信息补全时明确标注待补充项。
-4. 保持格式统一规范。
-
-请直接输出格式化后的参考文献列表。'''
+        system, prompt = self._render_scene(
+            'paper_write.section',
+            {
+                'outline': '',
+                'section_title': '参考文献格式化',
+                'context': refs_text,
+                'word_count': '',
+                'reference_style': style,
+            },
+        )
         return self.api.call_sync(
             prompt,
             system,
@@ -96,17 +95,16 @@ class PaperWriter:
 
     def improve_paragraph(self, paragraph, direction='学术化'):
         """改进段落。"""
-        system = '你是一位专业的学术写作助手。'
-        prompt = f'''请对以下段落进行{direction}改进：
-{paragraph}
-
-要求：
-1. 保持原有观点和信息。
-2. 提升学术表达水平。
-3. 增强逻辑连贯性。
-4. 使用更专业的学术词汇。
-
-请直接输出改进后的段落。'''
+        system, prompt = self._render_scene(
+            'paper_write.section',
+            {
+                'outline': '',
+                'section_title': f'{direction}改进',
+                'context': paragraph,
+                'word_count': '',
+                'reference_style': '',
+            },
+        )
         return self.api.call_sync(
             prompt,
             system,

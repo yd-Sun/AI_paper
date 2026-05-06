@@ -75,6 +75,9 @@
       }
     }
   ],
-  "scene_bindings": [],
+  "scene_bindings": [
+    "paper_write.section",
+    "polish.run_task"
+  ],
   "global_hook": false
 }
