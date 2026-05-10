@@ -5177,6 +5177,9 @@ class PaperWritePage(WorkspaceStateMixin):
         subject = self.subject_entry.get().strip()
         style = self.style_var.get()
         ref = self.ref_var.get()
+        knowledge_context = self._choose_knowledge_context('paper_write.outline', '生成大纲')
+        if knowledge_context is None:
+            return
 
         def on_start():
             self.outline_text.delete('1.0', tk.END)
@@ -5231,7 +5234,13 @@ class PaperWritePage(WorkspaceStateMixin):
             self.set_status('生成失败', COLORS['error'])
 
         self.task_runner.run(
-            work=lambda: self.writer.generate_outline(topic, style, ref, subject=subject),
+            work=lambda: self.writer.generate_outline(
+                topic,
+                style,
+                ref,
+                subject=subject,
+                knowledge_context=knowledge_context,
+            ),
             on_success=on_success,
             on_error=on_error,
             on_start=on_start,
@@ -8329,6 +8338,19 @@ class PaperWritePage(WorkspaceStateMixin):
             self.app_bridge.show_prompt_manager(page_id='paper_write', compact=True, scene_id=scene_id)
         return False
 
+    def _choose_knowledge_context(self, scene_id, action_label):
+        if not self.app_bridge or not hasattr(self.app_bridge, 'choose_knowledge_context'):
+            return {}
+        try:
+            return self.app_bridge.choose_knowledge_context(
+                scene_id,
+                page_id=self.PAGE_STATE_ID,
+                action_label=action_label,
+            )
+        except Exception as exc:
+            messagebox.showerror('知识库', f'选择知识库资料失败：{exc}', parent=self.frame)
+            return None
+
     def _resolve_section_existing_content(self, section):
         section = (section or '').strip()
         if not section:
@@ -8618,7 +8640,7 @@ class PaperWritePage(WorkspaceStateMixin):
             'reference_style': self.ref_var.get(),
         }
 
-    def _run_batch_write_task(self, targets, outline, word_count, reference_style):
+    def _run_batch_write_task(self, targets, outline, word_count, reference_style, knowledge_context=None):
         total = len(targets)
         completed_sections = []
 
@@ -8650,6 +8672,7 @@ class PaperWritePage(WorkspaceStateMixin):
                     write_inputs.get('existing_text', ''),
                     write_inputs.get('word_count', word_count),
                     write_inputs.get('reference_style', reference_style),
+                    knowledge_context=knowledge_context,
                 )
             except Exception as exc:
                 error_message = str(exc)
@@ -8730,6 +8753,9 @@ class PaperWritePage(WorkspaceStateMixin):
             return
 
         reference_style = self.ref_var.get()
+        knowledge_context = self._choose_knowledge_context('paper_write.section', '批量写作章节')
+        if knowledge_context is None:
+            return
 
         def on_success(result):
             if not result.get('ok'):
@@ -8748,6 +8774,7 @@ class PaperWritePage(WorkspaceStateMixin):
                 outline,
                 word_count,
                 reference_style,
+                knowledge_context,
             ),
             on_success=on_success,
             on_error=on_error,
@@ -8766,6 +8793,9 @@ class PaperWritePage(WorkspaceStateMixin):
             return
         existing = self._get_current_editor_text()
         existing_formats = self._resolve_section_existing_formats(section)
+        knowledge_context = self._choose_knowledge_context('paper_write.section', '写当前章节')
+        if knowledge_context is None:
+            return
 
         def on_success(result):
             outcome = self._apply_written_section_result(
@@ -8791,6 +8821,7 @@ class PaperWritePage(WorkspaceStateMixin):
                 existing,
                 int(self.wcount_var.get() or '1000'),
                 self.ref_var.get(),
+                knowledge_context=knowledge_context,
             ),
             on_success=on_success,
             on_error=on_error,
@@ -8810,6 +8841,9 @@ class PaperWritePage(WorkspaceStateMixin):
 
         existing = self._get_current_editor_text()
         existing_formats = self._resolve_section_existing_formats(section)
+        knowledge_context = self._choose_knowledge_context('paper_write.section', '生成表格')
+        if knowledge_context is None:
+            return
 
         def on_success(result):
             outcome = self._apply_written_section_result(
@@ -8834,6 +8868,7 @@ class PaperWritePage(WorkspaceStateMixin):
                 existing,
                 int(self.wcount_var.get() or '1000'),
                 self.ref_var.get(),
+                knowledge_context=knowledge_context,
             ),
             on_success=on_success,
             on_error=on_error,
@@ -8848,6 +8883,9 @@ class PaperWritePage(WorkspaceStateMixin):
             messagebox.showwarning('提示', '请先完善论文正文内容，再生成全文摘要', parent=self.frame)
             return
         if not self._ensure_prompt_ready('paper_write.abstract'):
+            return
+        knowledge_context = self._choose_knowledge_context('paper_write.abstract', '生成摘要')
+        if knowledge_context is None:
             return
 
         def on_success(result):
@@ -8868,7 +8906,7 @@ class PaperWritePage(WorkspaceStateMixin):
             self.set_status(f'失败: {exc}', COLORS['error'])
 
         self.task_runner.run(
-            work=lambda: self.writer.write_abstract(full_text),
+            work=lambda: self.writer.write_abstract(full_text, knowledge_context=knowledge_context),
             on_success=on_success,
             on_error=on_error,
             loading_text='正在生成摘要...',

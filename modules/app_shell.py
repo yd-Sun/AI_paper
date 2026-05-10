@@ -413,6 +413,9 @@ class SmartPaperTool:
         self._prompt_compact_panel = None
         self._skills_center_window = None
         self._skills_center_panel = None
+        self._knowledge_base_window = None
+        self._knowledge_base_panel = None
+        self._knowledge_base_store = None
         self._discover_skills_window = None
         self._discover_skills_panel = None
         self._repo_manage_window = None
@@ -2944,6 +2947,8 @@ class SmartPaperTool:
             show_api_config=self._show_api_config_dialog,
             show_prompt_manager=self._show_prompt_manager,
             show_skills_center=self._show_skills_center,
+            show_knowledge_base=self._show_knowledge_base,
+            choose_knowledge_context=self._choose_knowledge_context,
             show_discover_skills=self._show_discover_skills,
             show_repo_manage=self._show_repo_manage,
             show_model_routing=self._show_model_routing,
@@ -3277,6 +3282,9 @@ class SmartPaperTool:
         if window is self._skills_center_window:
             self._skills_center_window = None
             self._skills_center_panel = None
+        if window is self._knowledge_base_window:
+            self._knowledge_base_window = None
+            self._knowledge_base_panel = None
         if window is self._discover_skills_window:
             self._discover_skills_window = None
             self._discover_skills_panel = None
@@ -4168,6 +4176,74 @@ class SmartPaperTool:
         panel.frame.pack(fill=tk.BOTH, expand=True, padx=28, pady=28)
         self._skills_center_panel = panel
         return panel
+
+    def _get_knowledge_base_store(self):
+        if self._knowledge_base_store is None:
+            from modules.knowledge_base import KnowledgeBaseStore
+
+            self._knowledge_base_store = KnowledgeBaseStore(
+                self.config_mgr.app_dir,
+                log_callback=self._write_app_log,
+            )
+        return self._knowledge_base_store
+
+    def _show_knowledge_base(self):
+        from pages.knowledge_base_page import KnowledgeBasePanel
+
+        existing_window = self._knowledge_base_window
+        existing_panel = self._knowledge_base_panel
+        if existing_window and existing_window.winfo_exists() and existing_panel:
+            existing_window.lift()
+            existing_window.focus_force()
+            if hasattr(existing_panel, 'refresh_all'):
+                existing_panel.refresh_all()
+            return existing_panel
+
+        window, body = self._create_dialog_shell('知识库', '1600x1200')
+        window.resizable(True, True)
+        apply_adaptive_window_geometry(window, '1600x1200', min_width=1360, min_height=960)
+        self._knowledge_base_window = window
+
+        panel = KnowledgeBasePanel(
+            body,
+            self._get_knowledge_base_store(),
+            set_status=self._set_status,
+            close_panel=lambda win=window: self._close_dialog(win),
+        )
+        panel.frame.pack(fill=tk.BOTH, expand=True, padx=28, pady=28)
+        self._knowledge_base_panel = panel
+        return panel
+
+    def _choose_knowledge_context(self, scene_id, *, page_id='paper_write', action_label='',
+                                  total_char_limit=None, per_document_char_limit=None):
+        from pages.knowledge_base_page import KnowledgeContextDialog
+
+        if total_char_limit is None or per_document_char_limit is None:
+            feature_id = scene_id.split('.', 1)[0] if '.' in scene_id else scene_id
+            total_char_limit, per_document_char_limit = self.config_mgr.resolve_knowledge_context_budget(
+                scene_id=scene_id,
+                feature_id=feature_id,
+            )
+
+        dialog = KnowledgeContextDialog(
+            self.root,
+            self._get_knowledge_base_store(),
+            scene_id,
+            action_label=action_label,
+            total_char_limit=total_char_limit,
+            per_document_char_limit=per_document_char_limit,
+        )
+        result = dialog.show()
+        if result and result.get('context_text'):
+            docs_info = result.get('documents', [])
+            total_chars = sum(doc.get('used_char_count', 0) for doc in docs_info)
+            truncated = result.get('truncated', False)
+            self._write_app_log(
+                f'knowledge_context selected: page={page_id} scene={scene_id} '
+                f'project={result.get("project_id", "")} docs={len(docs_info)} '
+                f'chars={total_chars} truncated={truncated}'
+            )
+        return result
 
     def _show_discover_skills(self):
         from pages.discover_skills_page import DiscoverSkillsPanel

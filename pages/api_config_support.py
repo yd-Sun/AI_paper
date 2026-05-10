@@ -56,6 +56,8 @@ def build_base_form_template(provider_type='custom'):
         'use_separate_billing': False,
         'billing_multiplier': '',
         'billing_mode': '',
+        'knowledge_context_limit': '',
+        'knowledge_document_limit': '',
     }
 
 

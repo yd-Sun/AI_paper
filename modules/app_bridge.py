@@ -42,6 +42,9 @@ class AppBridge:
     def show_skills_center(self):
         return self._call('show_skills_center')
 
+    def show_knowledge_base(self):
+        return self._call('show_knowledge_base')
+
     def show_discover_skills(self):
         return self._call('show_discover_skills')
 
@@ -62,6 +65,18 @@ class AppBridge:
 
     def pull_paper_write_selection_snapshot(self):
         return self._call('pull_paper_write_selection_snapshot')
+
+    def choose_knowledge_context(self, scene_id, page_id='paper_write', action_label='',
+                                 total_char_limit=None, per_document_char_limit=None):
+        return self._call(
+            'choose_knowledge_context',
+            scene_id,
+            page_id=page_id,
+            action_label=action_label,
+            total_char_limit=total_char_limit,
+            per_document_char_limit=per_document_char_limit,
+            default={},
+        )
 
     def apply_result_to_paper_write(
         self,

@@ -287,6 +287,8 @@ class ConfigManager:
         cfg.setdefault('use_separate_billing', False)
         cfg.setdefault('billing_multiplier', '')
         cfg.setdefault('billing_mode', '')
+        cfg.setdefault('knowledge_context_limit', '')
+        cfg.setdefault('knowledge_document_limit', '')
         cfg.setdefault('hide_ai_signature', False)
         cfg.setdefault('teammates_mode', False)
         cfg.setdefault('enable_tool_search', False)
@@ -957,6 +959,41 @@ class ConfigManager:
             return fallback_api
 
         return self.active_api
+
+    def resolve_knowledge_context_budget(self, scene_id='', feature_id=''):
+        """解析当前场景应使用的知识库上下文预算。
+
+        依次通过路由解析确定 API 记录，再读取其
+        knowledge_context_limit / knowledge_document_limit 字段。
+        空值或无效值回退到 knowledge_base 模块的默认上限。
+        """
+        from .knowledge_base import DEFAULT_TOTAL_CHAR_LIMIT, DEFAULT_PER_DOCUMENT_CHAR_LIMIT
+
+        api_id = self.resolve_routed_api(scene_id=scene_id, feature_id=feature_id)
+        if not api_id:
+            return (DEFAULT_TOTAL_CHAR_LIMIT, DEFAULT_PER_DOCUMENT_CHAR_LIMIT)
+
+        api_cfg = self.get_api_config(api_id)
+        if not api_cfg:
+            return (DEFAULT_TOTAL_CHAR_LIMIT, DEFAULT_PER_DOCUMENT_CHAR_LIMIT)
+
+        total_limit = DEFAULT_TOTAL_CHAR_LIMIT
+        total_str = str(api_cfg.get('knowledge_context_limit', '') or '').strip()
+        if total_str:
+            try:
+                total_limit = max(int(total_str), 1)
+            except (ValueError, TypeError):
+                pass
+
+        per_doc_limit = DEFAULT_PER_DOCUMENT_CHAR_LIMIT
+        per_doc_str = str(api_cfg.get('knowledge_document_limit', '') or '').strip()
+        if per_doc_str:
+            try:
+                per_doc_limit = max(int(per_doc_str), 1)
+            except (ValueError, TypeError):
+                pass
+
+        return (total_limit, per_doc_limit)
 
     def ensure_prompt_center_seeded(self, scene_payloads):
         prompt_center = self._sanitize_prompt_center(self._data.get('prompt_center', {}))

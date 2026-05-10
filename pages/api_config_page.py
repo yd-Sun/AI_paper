@@ -298,6 +298,7 @@ class APIConfigPage:
             open_var=use_separate_params,
         )
         self._build_billing_section(parent, FORM_KEY)
+        self._build_collapsible_section(parent, '知识库上下文', lambda p: self._build_knowledge_section(p, FORM_KEY))
 
     def _build_provider_grid(self, parent):
         for widget in parent.winfo_children():
@@ -1122,6 +1123,10 @@ class APIConfigPage:
 
         self._build_collapsible_section(parent, '计费配置', build_body, collapsed=True, right_widget_factory=make_toggle, open_var=use_separate)
 
+    def _build_knowledge_section(self, parent, form_key):
+        self._entry_row(parent, '知识库总字符上限', 'knowledge_context_limit', form_key, placeholder='留空使用默认值 12000', width=20)
+        self._entry_row(parent, '单份资料字符上限', 'knowledge_document_limit', form_key, placeholder='留空使用默认值 4000', width=20)
+
     def _format_json_field(self, form_key, field_key, field_label):
         txt = self._entries.get(form_key, {}).get(field_key)
         if not txt:
@@ -1147,6 +1152,7 @@ class APIConfigPage:
             'test_model', 'test_prompt', 'test_timeout', 'test_degrade_ms', 'test_max_retries',
             'temperature', 'max_tokens', 'timeout', 'top_p', 'presence_penalty', 'frequency_penalty',
             'billing_multiplier',
+            'knowledge_context_limit', 'knowledge_document_limit',
         ]
         for key in text_keys:
             widget = entries.get(key)
@@ -1237,6 +1243,15 @@ class APIConfigPage:
                     'auth_value_mode',
                     cfg.get('auth_value_mode', AUTH_VALUE_MODE_BEARER),
                 )
+        for field in ('knowledge_context_limit', 'knowledge_document_limit'):
+            value = str(cfg.get(field, '') or '').strip()
+            if value:
+                try:
+                    cfg[field] = str(max(int(value), 1))
+                except (ValueError, TypeError):
+                    cfg[field] = ''
+            else:
+                cfg[field] = ''
         return cfg
 
     def _validate(self):

@@ -1434,6 +1434,18 @@ class HomePage:
                 min_width=176,
             )
         )
+        self.hero_actions_bar.add(
+            self._make_hero_shell_button(
+                self.hero_actions_bar,
+                '知识库',
+                'secondary',
+                lambda: self._trigger_action('show_knowledge_base'),
+                padx=18,
+                pady=6,
+                font=FONTS['body_bold'],
+                min_width=176,
+            )
+        )
 
         self.hero_tags_host = tk.Frame(self.hero_text, bg=COLORS['hero_stripe_a'], bd=0, highlightthickness=0)
         self.hero_tags_bar = ResponsiveButtonBar(
@@ -1492,6 +1504,16 @@ class HomePage:
                 'skills',
                 'secondary',
                 lambda: self._trigger_action('show_skills_center'),
+                padx=18,
+                pady=6,
+                font=FONTS['body_bold'],
+                min_width=176,
+            ),
+            self._make_hero_shell_button(
+                self.hero_text,
+                '知识库',
+                'secondary',
+                lambda: self._trigger_action('show_knowledge_base'),
                 padx=18,
                 pady=6,
                 font=FONTS['body_bold'],
