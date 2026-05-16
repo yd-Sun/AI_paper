@@ -1,26 +1,25 @@
 {
-  "version": 13,
-  "latest_version": "v1.4.1",
+  "version": 14,
+  "latest_version": "v1.5.1",
   "min_supported_version": "v1.3.0",
-  "release_date": "2026-05-07",
+  "release_date": "2026-05-16",
   "download_url": "https://github.com/Abnerla/AI_paper/releases",
   "changelog": [
     {
-      "version": "v1.4.1",
-      "date": "2026-05-07",
+      "version": "v1.5.1",
+      "date": "2026-05-16",
       "changes": [
-    "新增 右键显示菜单“段落标记”",
+    "新增 表格生成",
+    "新增 知识库",
 
-    "优化 用户报告多次导入的问题",
+    "优化 提示词",
 
-    "修复 Skill失效的问题",
-    "修复 批量写作进度提示字符串乱码",
-    "修复 第三方 skill 多文件导入场景未注册",
-    "修复 翻译润色缺少检查",
+    "修复 模型配置部分功能失效",
 
-    "死代码清理"
+    "一些性能修复与优化~~~",
+    "支持英特尔芯片的Mac安装"
       ]
     }
   ],
-  "update_message": ""
+  "update_message": "请尽快更新体验最新功能哟~"
 }
