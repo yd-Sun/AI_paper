@@ -100,7 +100,7 @@
       "homepage": "https://github.com/Abnerla/AI_paper",
       "global_hook": false,
       "scene_bindings": [
-        "paper_write.topic"
+        "paper_write.outline"
       ]
     },
     {
@@ -114,8 +114,7 @@
       "homepage": "https://github.com/Abnerla/AI_paper",
       "global_hook": false,
       "scene_bindings": [
-        "paper_write.section",
-        "paper_write.reference"
+        "paper_write.section"
       ]
     },
     {
@@ -129,7 +128,6 @@
       "homepage": "https://github.com/Abnerla/AI_paper",
       "global_hook": false,
       "scene_bindings": [
-        "paper_write.topic",
         "paper_write.outline"
       ]
     },
@@ -174,8 +172,7 @@
       "homepage": "https://github.com/Abnerla/AI_paper",
       "global_hook": false,
       "scene_bindings": [
-        "paper_write.section",
-        "paper_write.reference"
+        "paper_write.section"
       ]
     },
     {

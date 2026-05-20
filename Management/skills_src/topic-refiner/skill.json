@@ -61,7 +61,7 @@
     }
   ],
   "scene_bindings": [
-    "paper_write.topic"
+    "paper_write.outline"
   ],
   "global_hook": false
 }

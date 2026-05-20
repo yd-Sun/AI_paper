@@ -100,8 +100,7 @@
     }
   ],
   "scene_bindings": [
-    "paper_write.section",
-    "paper_write.reference"
+    "paper_write.section"
   ],
   "global_hook": false
 }
