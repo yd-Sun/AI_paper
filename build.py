@@ -112,6 +112,41 @@ def require_command(name):
     return command
 
 
+def format_size(num_bytes):
+    size = float(max(num_bytes, 0))
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if size < 1024 or unit == 'TB':
+            if unit == 'B':
+                return f'{int(size)} {unit}'
+            return f'{size:.1f} {unit}'
+        size /= 1024
+    return f'{int(size)} B'
+
+
+def get_path_size(path):
+    if os.path.isfile(path):
+        return os.path.getsize(path)
+
+    total_size = 0
+    for current_root, _dirnames, filenames in os.walk(path):
+        for filename in filenames:
+            file_path = os.path.join(current_root, filename)
+            if os.path.islink(file_path):
+                continue
+            total_size += os.path.getsize(file_path)
+    return total_size
+
+
+def print_disk_usage(label, path=PROJECT_DIR):
+    usage = shutil.disk_usage(path)
+    print(
+        f'[build] {label} disk usage: '
+        f'free={format_size(usage.free)}, '
+        f'used={format_size(usage.used)}, '
+        f'total={format_size(usage.total)}'
+    )
+
+
 def write_text_file(path, content, executable=False):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w', encoding='utf-8', newline='\n') as file:
@@ -281,6 +316,10 @@ def create_dmg():
     if os.path.exists(dmg_path):
         os.remove(dmg_path)
 
+    app_size = get_path_size(app_path)
+    print(f'[build] DMG source size: {format_size(app_size)}')
+    print_disk_usage('Before DMG creation', DIST_DIR)
+
     cmd = [
         'hdiutil', 'create',
         '-volname', APP_NAME,
@@ -290,7 +329,32 @@ def create_dmg():
         dmg_path,
     ]
     print(f'[build] Creating DMG for {arch_suffix}: {dmg_path}')
-    subprocess.check_call(cmd)
+    completed = subprocess.run(
+        cmd,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+    )
+    if completed.stdout:
+        print(completed.stdout.strip())
+    if completed.stderr:
+        print(completed.stderr.strip())
+    if completed.returncode != 0:
+        error_output = '\n'.join(filter(None, [completed.stdout, completed.stderr]))
+        if 'No space left on device' in error_output:
+            print(
+                '[build] DMG creation failed because the runner is out of disk space. '
+                f'app_bundle={format_size(app_size)}'
+            )
+            print_disk_usage('After DMG failure', DIST_DIR)
+        raise subprocess.CalledProcessError(
+            completed.returncode,
+            cmd,
+            output=completed.stdout,
+            stderr=completed.stderr,
+        )
     print(f'[build] DMG created: {dmg_path}')
 
     # 同时创建不带架构后缀的通用文件名（向后兼容）
@@ -298,6 +362,28 @@ def create_dmg():
     if generic_dmg_path != dmg_path:
         shutil.copy2(dmg_path, generic_dmg_path)
         print(f'[build] Generic DMG created: {generic_dmg_path}')
+
+
+def reclaim_installer_space(platform_name):
+    """在创建安装包前回收可删除的临时产物。"""
+    reclaimed_items = []
+
+    if os.path.isdir(BUILD_DIR):
+        build_size = get_path_size(BUILD_DIR)
+        shutil.rmtree(BUILD_DIR)
+        reclaimed_items.append(f'PyInstaller workpath {format_size(build_size)}')
+
+    if platform_name == 'macos':
+        standalone_executable = os.path.join(DIST_DIR, APP_NAME)
+        app_bundle = os.path.join(DIST_DIR, f'{APP_NAME}.app')
+        if os.path.isdir(app_bundle) and os.path.isfile(standalone_executable):
+            executable_size = os.path.getsize(standalone_executable)
+            os.remove(standalone_executable)
+            reclaimed_items.append(f'standalone executable {format_size(executable_size)}')
+
+    if reclaimed_items:
+        print(f'[build] Reclaimed installer space: {", ".join(reclaimed_items)}')
+        print_disk_usage('After installer cleanup', DIST_DIR)
 
 
 def create_appimage():
@@ -493,6 +579,7 @@ def main():
         create_windows_release_executable()
 
     if args.installer:
+        reclaim_installer_space(platform)
         if platform == 'windows':
             create_inno_setup_installer()
         elif platform == 'macos':
