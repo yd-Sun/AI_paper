@@ -1288,28 +1288,41 @@ def bind_combobox_dropdown_mousewheel(combo):
 class SkillCardGrid(tk.Frame):
     """响应式网格布局容器，用于展示固定宽度的技能卡片。"""
 
-    def __init__(self, parent, card_width=280, gap_x=14, gap_y=14, **kwargs):
+    def __init__(self, parent, card_width=280, card_height=None, gap_x=14, gap_y=14, max_columns=None, **kwargs):
         kwargs.setdefault('bg', parent.cget('bg') if 'bg' in parent.keys() else COLORS['bg_main'])
         kwargs.setdefault('bd', 0)
         kwargs.setdefault('highlightthickness', 0)
         super().__init__(parent, **kwargs)
         self._card_width = card_width
+        self._card_height = card_height
         self._gap_x = gap_x
         self._gap_y = gap_y
+        self._max_columns = max_columns
         self._cards = []
         self._last_layout_signature = None
+        self._last_cols = 0
         self.bind('<Configure>', self._schedule_relayout, add='+')
 
     def add_card(self, widget):
+        try:
+            size_kwargs = {'width': self._card_width}
+            if self._card_height is not None:
+                size_kwargs['height'] = self._card_height
+            widget.configure(**size_kwargs)
+            widget.grid_propagate(False)
+            widget.pack_propagate(False)
+        except tk.TclError:
+            pass
         self._cards.append(widget)
         self.after_idle(self._schedule_relayout)
 
     def clear_cards(self):
-        for card in self._cards:
+        for card in self.winfo_children():
             card.grid_forget()
             card.destroy()
         self._cards.clear()
         self._last_layout_signature = None
+        self._last_cols = 0
 
     def _schedule_relayout(self, _event=None, delay_ms=16):
         _schedule_resize_batch(
@@ -1323,8 +1336,10 @@ class SkillCardGrid(tk.Frame):
         if not self._cards:
             return
         width = max(self.winfo_width(), 1)
-        cols = max(1, width // (self._card_width + self._gap_x))
-        signature = (width, cols, len(self._cards))
+        cols = max(1, (width + self._gap_x) // (self._card_width + self._gap_x))
+        if self._max_columns is not None:
+            cols = min(cols, max(1, int(self._max_columns)))
+        signature = (width, cols, len(self._cards), self._card_width, self._card_height)
         if signature == self._last_layout_signature:
             return
         self._last_layout_signature = signature
@@ -1332,15 +1347,19 @@ class SkillCardGrid(tk.Frame):
         for card in self._cards:
             card.grid_forget()
 
-        for col in range(cols):
-            self.grid_columnconfigure(col, weight=1, uniform='skill_col')
+        for col in range(max(self._last_cols, cols)):
+            if col < cols:
+                self.grid_columnconfigure(col, weight=1, minsize=self._card_width, uniform='skill_col')
+            else:
+                self.grid_columnconfigure(col, weight=0, minsize=0, uniform='')
+        self._last_cols = cols
 
         for index, card in enumerate(self._cards):
             row = index // cols
             col = index % cols
             padx = (0, self._gap_x) if col < cols - 1 else (0, 0)
             pady = (0, self._gap_y)
-            card.grid(row=row, column=col, padx=padx, pady=pady, sticky='new')
+            card.grid(row=row, column=col, padx=padx, pady=pady, sticky='nsew')
 
 
 class ResponsiveButtonBar(tk.Frame):

@@ -14,6 +14,7 @@ from tkinter import messagebox, ttk
 from modules.skills_runtime import SkillExecutionError, SkillValidationError
 from modules.ui_components import (
     bind_adaptive_wrap,
+    bind_ellipsis_tooltip,
     bind_combobox_dropdown_mousewheel,
     CardFrame,
     COLORS,
@@ -21,12 +22,20 @@ from modules.ui_components import (
     FONTS,
     ModernButton,
     ScrollablePage,
+    set_ellipsized_label_text,
     SkillCardGrid,
+    show_tooltip,
     ToggleSwitch,
 )
 
 
 class DiscoverSkillsPanel:
+    SKILL_CARD_WIDTH = 340
+    SKILL_CARD_HEIGHT = 400
+    SKILL_CARD_DESC_HEIGHT = 132
+    SKILL_CARD_DESC_LINES = 4
+    SKILL_CARD_DESC_CHARS = 72
+
     def __init__(self, parent, config_mgr, skill_manager, remote_content_manager,
                  marketplace_client, *, set_status, close_panel=None, on_skill_installed=None,
                  on_open_repo_manage=None):
@@ -75,9 +84,11 @@ class DiscoverSkillsPanel:
 
         self._card_grid = SkillCardGrid(
             self._grid_area.inner,
-            card_width=280,
+            card_width=self.SKILL_CARD_WIDTH,
+            card_height=self.SKILL_CARD_HEIGHT,
             gap_x=14,
             gap_y=14,
+            max_columns=4,
             bg=COLORS['bg_main'],
         )
         self._card_grid.pack(fill=tk.BOTH, expand=True)
@@ -591,25 +602,82 @@ class DiscoverSkillsPanel:
         except tk.TclError:
             pass
 
+    @staticmethod
+    def _first_view_text(view, keys, default=''):
+        if not isinstance(view, dict):
+            return default
+        sources = [view]
+        for nested_key in ('manifest', 'registry_entry'):
+            nested = view.get(nested_key)
+            if isinstance(nested, dict):
+                sources.append(nested)
+        for source in sources:
+            for key in keys:
+                value = str(source.get(key, '') or '').strip()
+                if value:
+                    return value
+        return default
+
+    @classmethod
+    def _skill_display_name(cls, view):
+        skill_id = str((view or {}).get('id', '') or '').strip()
+        return cls._first_view_text(
+            view,
+            ('name', 'title', 'display_name', 'label'),
+            skill_id or '未命名技能',
+        )
+
+    @classmethod
+    def _skill_display_description(cls, view):
+        return cls._first_view_text(
+            view,
+            ('description', 'summary', 'intro', 'readme', 'details'),
+            '该技能暂未提供介绍，请查看技能详情或仓库文档。',
+        )
+
+    @staticmethod
+    def _truncate_card_text(text, limit):
+        value = ' '.join(str(text or '').split())
+        if len(value) <= limit:
+            return value, False
+        return value[:max(0, limit - 3)].rstrip() + '...', True
+
     def _render_skill_card(self, view):
-        skill_id = view.get('id', '')
         is_installed = bool(view.get('is_installed', False))
         has_update = bool(view.get('has_update', False))
         card = CardFrame(self._card_grid, padding=14)
+        card.configure(width=self.SKILL_CARD_WIDTH, height=self.SKILL_CARD_HEIGHT)
+        card.grid_propagate(False)
+        card.pack_propagate(False)
+        try:
+            card.body.configure(width=self.SKILL_CARD_WIDTH - 6, height=self.SKILL_CARD_HEIGHT - 6)
+            card.body.pack_propagate(False)
+            card.inner.configure(width=self.SKILL_CARD_WIDTH - 34, height=self.SKILL_CARD_HEIGHT - 34)
+            card.inner.pack_propagate(False)
+            card.inner.grid_propagate(False)
+        except tk.TclError:
+            pass
+
+        card.inner.grid_columnconfigure(0, weight=1)
+        card.inner.grid_rowconfigure(3, weight=1, minsize=self.SKILL_CARD_DESC_HEIGHT)
 
         # 头部行：名称 + 状态标签
         header = tk.Frame(card.inner, bg=COLORS['card_bg'])
-        header.pack(fill=tk.X)
-        skill_name = view.get('name') or skill_id
+        header.grid(row=0, column=0, sticky='ew')
+        header.grid_columnconfigure(0, weight=1)
+        skill_name = self._skill_display_name(view)
         name_label = tk.Label(
             header,
-            text=skill_name,
+            text='',
             font=FONTS['body_bold'],
             fg=COLORS['text_main'],
             bg=COLORS['card_bg'],
             anchor='w',
+            width=1,
         )
-        name_label.pack(side=tk.LEFT)
+        name_label.grid(row=0, column=0, sticky='ew')
+        bind_ellipsis_tooltip(name_label, padding=8, wraplength=360)
+        set_ellipsized_label_text(name_label, skill_name)
 
         tag_text = ''
         tag_fg = COLORS['primary']
@@ -627,55 +695,73 @@ class DiscoverSkillsPanel:
                 fg=tag_fg,
                 bg=COLORS['card_bg'],
                 anchor='e',
-            ).pack(side=tk.RIGHT)
+            ).grid(row=0, column=1, sticky='e', padx=(8, 0))
 
-        # 元信息行
-        version_val = view.get('version', '') or view.get('latest_version', '')
-        version_str = str(version_val).strip()
-        if not version_str or version_str == 'v0.0.0':
-            version_text = '未知'
-        elif not version_str.startswith('v'):
-            version_text = 'v' + version_str
-        else:
-            version_text = version_str
-        source_label = view.get('source_label', '') or view.get('source_type', '') or 'registry'
-        meta_text = f'版本: {version_text}  来源: {source_label}'
-        if view.get('publisher'):
-            meta_text += f'  作者: {view.get("publisher")}'
-        tk.Label(
-            card.inner,
-            text=meta_text,
+        source_label = str(view.get('source_label', '') or view.get('source_type', '') or 'registry').strip()
+        publisher = str(view.get('publisher', '') or '').strip()
+
+        meta_row = tk.Frame(card.inner, bg=COLORS['card_bg'])
+        meta_row.grid(row=1, column=0, sticky='ew', pady=(8, 0))
+        meta_row.grid_columnconfigure(0, weight=1)
+
+        author_label = tk.Label(
+            meta_row,
+            text='',
             font=FONTS['small'],
             fg=COLORS['text_sub'],
             bg=COLORS['card_bg'],
             anchor='w',
-        ).pack(fill=tk.X, pady=(4, 0))
+            width=1,
+        )
+        author_label.grid(row=0, column=0, sticky='ew')
+        bind_ellipsis_tooltip(author_label, padding=6, wraplength=360)
+        set_ellipsized_label_text(author_label, f'作者: {publisher or "未知"}')
 
-        # 描述行
-        desc = view.get('description', '') or '暂无描述'
-        desc_label = tk.Label(
+        source_meta_label = tk.Label(
             card.inner,
-            text=desc,
-            font=FONTS['body'],
+            text='',
+            font=FONTS['small'],
             fg=COLORS['text_sub'],
             bg=COLORS['card_bg'],
             anchor='w',
-            justify='left',
+            width=1,
         )
-        desc_label.pack(fill=tk.X, pady=(8, 0))
-        bind_adaptive_wrap(desc_label, card.inner, padding=12, min_width=200)
+        source_meta_label.grid(row=2, column=0, sticky='ew', pady=(4, 0))
+        bind_ellipsis_tooltip(source_meta_label, padding=8, wraplength=380)
+        set_ellipsized_label_text(source_meta_label, f'来源: {source_label}')
+
+        # 描述行
+        desc = self._skill_display_description(view)
+        desc_text, desc_truncated = self._truncate_card_text(desc, self.SKILL_CARD_DESC_CHARS)
+        desc_frame = tk.Frame(card.inner, bg=COLORS['card_bg'], height=self.SKILL_CARD_DESC_HEIGHT)
+        desc_frame.grid(row=3, column=0, sticky='nsew', pady=(10, 0))
+        desc_frame.pack_propagate(False)
+        desc_label = tk.Label(
+            desc_frame,
+            text=desc_text,
+            font=FONTS['body'],
+            fg=COLORS['text_sub'],
+            bg=COLORS['card_bg'],
+            anchor='nw',
+            justify='left',
+            wraplength=max(160, self.SKILL_CARD_WIDTH - 54),
+            height=self.SKILL_CARD_DESC_LINES,
+        )
+        desc_label.pack(fill=tk.X, anchor='nw')
+        if desc_truncated:
+            show_tooltip(desc_label, desc, wraplength=420)
 
         # 操作行
         action_row = tk.Frame(card.inner, bg=COLORS['card_bg'])
-        action_row.pack(fill=tk.X, pady=(10, 0))
+        action_row.grid(row=4, column=0, sticky='ew', pady=(12, 0))
 
         if is_installed and not has_update:
             installed_btn = ModernButton(
                 action_row,
                 '已安装',
                 style='ghost',
-                padx=10,
-                pady=3,
+                padx=16,
+                pady=5,
                 state='disabled',
             )
             installed_btn.pack(side=tk.LEFT)
@@ -686,8 +772,8 @@ class DiscoverSkillsPanel:
                 action_row,
                 install_label,
                 style=install_style,
-                padx=10,
-                pady=3,
+                padx=16,
+                pady=5,
                 command=lambda v=view: self._install_skill(v),
             )
             install_btn.pack(side=tk.LEFT)
@@ -696,8 +782,8 @@ class DiscoverSkillsPanel:
             action_row,
             '详情',
             style='ghost',
-            padx=10,
-            pady=3,
+            padx=16,
+            pady=5,
             command=lambda v=view: self._show_skill_detail(v),
         )
         detail_btn.pack(side=tk.RIGHT)
@@ -707,7 +793,7 @@ class DiscoverSkillsPanel:
     # ------------------------------------------------------------------ 安装技能
     def _install_skill(self, view):
         skill_id = view.get('id', '')
-        skill_name = view.get('name') or skill_id
+        skill_name = self._skill_display_name(view)
         is_installed = bool(view.get('is_installed', False))
         is_update = is_installed and view.get('has_update', False)
         registry_entry = view.get('registry_entry') or {}
@@ -760,123 +846,21 @@ class DiscoverSkillsPanel:
 
     # ------------------------------------------------------------------ 技能详情
     def _show_skill_detail(self, view):
-        detail_window = tk.Toplevel(self.frame.winfo_toplevel())
-        skill_name = view.get('name') or view.get('id', '')
-        detail_window.title(f'技能详情 - {skill_name}')
-        detail_window.configure(bg=COLORS['bg_main'])
-        detail_window.transient(self.frame.winfo_toplevel())
-        detail_window.resizable(True, True)
+        """打开技能详情页面（跳转到GitHub上的SKILL.md）"""
+        skill_id = view.get('id', '')
+        if not skill_id:
+            messagebox.showinfo('技能详情', '无法获取技能ID', parent=self.frame.winfo_toplevel())
+            return
 
-        # 居中显示
-        w, h = 640, 520
-        parent_x = self.frame.winfo_toplevel().winfo_x()
-        parent_y = self.frame.winfo_toplevel().winfo_y()
-        parent_w = self.frame.winfo_toplevel().winfo_width()
-        parent_h = self.frame.winfo_toplevel().winfo_height()
-        x = parent_x + (parent_w - w) // 2
-        y = parent_y + (parent_h - h) // 2
-        detail_window.geometry(f'{w}x{h}+{max(0, x)}+{max(0, y)}')
-        detail_window.minsize(480, 360)
+        # 构建GitHub上SKILL.md的URL
+        github_base_url = 'https://github.com/Abnerla/AI_paper/blob/main/Management/skills_src'
+        skill_md_url = f'{github_base_url}/{skill_id}/SKILL.md'
 
-        # 内容
-        card = tk.Frame(detail_window, bg=COLORS['shadow'])
-        card.pack(fill=tk.BOTH, expand=True, padx=14, pady=14)
-        body = tk.Frame(card, bg=COLORS['card_bg'], highlightbackground=COLORS['card_border'], highlightthickness=2, bd=0)
-        body.pack(fill=tk.BOTH, expand=True, padx=(0, 6), pady=(0, 6))
-
-        scroll = ScrollablePage(body, bg=COLORS['card_bg'])
-        scroll.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        inner = scroll.inner
-
-        # 标题
-        tk.Label(inner, text=skill_name, font=FONTS['subtitle'], fg=COLORS['text_main'],
-                 bg=COLORS['card_bg'], anchor='w').pack(fill=tk.X)
-
-        # 基本信息
-        is_installed = bool(view.get('is_installed', False))
-        status_parts = []
-        if is_installed:
-            status_parts.append('已安装')
-        if view.get('has_update'):
-            status_parts.append('可更新')
-        if view.get('is_local_only'):
-            status_parts.append('仅本地')
-        if not is_installed:
-            status_parts.append('未安装')
-        status_text = ' / '.join(status_parts) if status_parts else '未知'
-
-        meta_lines = [
-            f'ID: {view.get("id", "")}',
-            f'版本: {view.get("version", "未知")}  最新: {view.get("latest_version", view.get("version", "未知"))}',
-            f'来源: {view.get("source_type", "registry") or "registry"}',
-            f'发布者: {view.get("publisher", "未知")}',
-            f'状态: {status_text}',
-        ]
-        if is_installed:
-            from pages.skills_center_page import _format_timestamp
-            meta_lines.append(f'安装时间: {_format_timestamp(view.get("installed_at", 0))}')
-            meta_lines.append(f'启用: {"是" if view.get("enabled") else "否"}')
-            meta_lines.append(f'全局生效: {"是" if view.get("global_enabled") else "否"}')
-
-        tk.Label(inner, text='\n'.join(meta_lines), font=FONTS['small'], fg=COLORS['text_sub'],
-                 bg=COLORS['card_bg'], anchor='w', justify='left').pack(fill=tk.X, pady=(10, 0))
-
-        # 描述
-        desc = view.get('description', '') or '暂无描述'
-        tk.Label(inner, text='描述:', font=FONTS['body_bold'], fg=COLORS['text_main'],
-                 bg=COLORS['card_bg'], anchor='w').pack(fill=tk.X, pady=(14, 4))
-        desc_label = tk.Label(inner, text=desc, font=FONTS['body'], fg=COLORS['text_sub'],
-                              bg=COLORS['card_bg'], anchor='w', justify='left')
-        desc_label.pack(fill=tk.X)
-        bind_adaptive_wrap(desc_label, inner, padding=12, min_width=400)
-
-        # 场景绑定
-        scene_bindings = view.get('scene_bindings', [])
-        if scene_bindings:
-            tk.Label(inner, text='适用场景:', font=FONTS['body_bold'], fg=COLORS['text_main'],
-                     bg=COLORS['card_bg'], anchor='w').pack(fill=tk.X, pady=(14, 4))
-            tk.Label(inner, text=', '.join(scene_bindings), font=FONTS['body'], fg=COLORS['text_sub'],
-                     bg=COLORS['card_bg'], anchor='w', justify='left').pack(fill=tk.X)
-
-        # 操作按钮
-        btn_row = tk.Frame(inner, bg=COLORS['card_bg'])
-        btn_row.pack(fill=tk.X, pady=(20, 0))
-
-        if not is_installed or view.get('has_update'):
-            label = '更新' if is_installed else '安装'
-            install_btn = ModernButton(
-                btn_row,
-                label,
-                style='primary',
-                padx=14,
-                pady=5,
-                command=lambda v=view: (detail_window.destroy(), self._install_skill(v)),
-            )
-            install_btn.pack(side=tk.LEFT, padx=(0, 8))
-
-        homepage = ''
-        if view.get('manifest'):
-            homepage = str(view.get('manifest', {}).get('homepage', '') or '').strip()
-        if not homepage and view.get('registry_entry'):
-            homepage = str(view.get('registry_entry', {}).get('homepage', '') or '').strip()
-        if homepage:
-            ModernButton(
-                btn_row,
-                '打开主页',
-                style='secondary',
-                padx=14,
-                pady=5,
-                command=lambda: webbrowser.open(homepage),
-            ).pack(side=tk.LEFT, padx=(0, 8))
-
-        ModernButton(
-            btn_row,
-            '关闭',
-            style='ghost',
-            padx=14,
-            pady=5,
-            command=detail_window.destroy,
-        ).pack(side=tk.RIGHT)
+        # 直接在浏览器中打开
+        try:
+            webbrowser.open(skill_md_url)
+        except Exception as e:
+            messagebox.showerror('打开失败', f'无法打开技能详情页面: {e}', parent=self.frame.winfo_toplevel())
 
     # ------------------------------------------------------------------ 刷新
     def _refresh(self):

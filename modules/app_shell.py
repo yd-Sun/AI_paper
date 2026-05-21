@@ -4569,9 +4569,9 @@ class SmartPaperTool:
             existing_panel._refresh()
             return existing_panel
 
-        window, body = self._create_dialog_shell('发现技能', '1200x800')
+        window, body = self._create_dialog_shell('发现技能', '1640x980')
         window.resizable(True, True)
-        apply_adaptive_window_geometry(window, '1200x800', min_width=900, min_height=640)
+        apply_adaptive_window_geometry(window, '1640x980', min_width=1420, min_height=820)
         self._discover_skills_window = window
 
         # 创建或复用 marketplace 客户端
